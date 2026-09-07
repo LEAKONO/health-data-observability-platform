@@ -1,0 +1,48 @@
+"""
+src/utils/snowflake_connection.py
+
+Provides a single, reusable way to connect to Snowflake.
+Every other module (loader, dbt, tests) uses this instead of
+writing its own connection logic — one place to fix if connection
+details ever change.
+"""
+
+import os
+import snowflake.connector
+from dotenv import load_dotenv
+
+load_dotenv()  # reads variables from .env into the environment
+
+
+def get_snowflake_connection():
+    """
+    Opens and returns a Snowflake connection using credentials
+    from environment variables (never hardcoded).
+
+    Raises a clear error immediately if required config is missing,
+    instead of failing later with a confusing connection error.
+    """
+    required_vars = [
+        "SNOWFLAKE_ACCOUNT",
+        "SNOWFLAKE_USER",
+        "SNOWFLAKE_PASSWORD",
+        "SNOWFLAKE_WAREHOUSE",
+        "SNOWFLAKE_DATABASE",
+        "SNOWFLAKE_SCHEMA",
+    ]
+    missing = [var for var in required_vars if not os.getenv(var)]
+    if missing:
+        raise EnvironmentError(
+            f"Missing required Snowflake config: {', '.join(missing)}. "
+            f"Check your .env file."
+        )
+
+    conn = snowflake.connector.connect(
+        account=os.getenv("SNOWFLAKE_ACCOUNT"),
+        user=os.getenv("SNOWFLAKE_USER"),
+        password=os.getenv("SNOWFLAKE_PASSWORD"),
+        warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
+        database=os.getenv("SNOWFLAKE_DATABASE"),
+        schema=os.getenv("SNOWFLAKE_SCHEMA"),
+    )
+    return conn
