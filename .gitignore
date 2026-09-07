@@ -1,0 +1,25 @@
+# Environments
+venv/
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+
+# dbt
+dbt_project/target/
+dbt_project/dbt_packages/
+dbt_project/logs/
+
+# Great Expectations
+great_expectations/uncommitted/
+
+# Airflow
+airflow.db
+airflow.cfg
+logs/
+
+# OS
+.DS_Store
