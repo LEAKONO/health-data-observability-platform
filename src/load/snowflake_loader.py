@@ -158,3 +158,98 @@ def _write_pipeline_log(conn, run_id, pipeline_name, stage, status,
         )
     finally:
         cursor.close()
+
+
+def load_flu_surveillance(records: list[dict], run_id: str) -> dict:
+    if not records:
+        logger.info(
+            "No records to load", extra={"run_id": run_id, "stage": "load", "row_count_in": 0}
+        )
+        return {"row_count_in": 0, "row_count_out": 0, "status": "success"}
+
+    start_time = time.time()
+    conn = get_snowflake_connection()
+    cursor = conn.cursor()
+
+    row_count_out = 0
+    status = "success"
+    error_message = None
+
+    try:
+        cursor.execute("""
+            CREATE TEMPORARY TABLE IF NOT EXISTS RAW.FLU_SURVEILLANCE_STAGING (
+                run_id            STRING,
+                snapshot_date     DATE,
+                ingested_at       TIMESTAMP_NTZ,
+                state             STRING,
+                activity_level    STRING,
+                raw_payload_text  STRING
+            )
+        """)
+
+        insert_rows = [
+            (
+                r["run_id"], r["snapshot_date"], r["ingested_at"],
+                r["state"], r["activity_level"], json.dumps(r["raw_payload"]),
+            )
+            for r in records
+        ]
+        cursor.executemany(
+            """
+            INSERT INTO RAW.FLU_SURVEILLANCE_STAGING
+            (run_id, snapshot_date, ingested_at, state, activity_level, raw_payload_text)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            insert_rows,
+        )
+
+        cursor.execute("""
+            MERGE INTO RAW.FLU_SURVEILLANCE_RAW AS target
+            USING (
+                SELECT
+                    run_id, snapshot_date, ingested_at, state, activity_level,
+                    PARSE_JSON(raw_payload_text) AS raw_payload
+                FROM RAW.FLU_SURVEILLANCE_STAGING
+            ) AS source
+            ON target.run_id = source.run_id
+               AND target.snapshot_date = source.snapshot_date
+               AND target.state = source.state
+            WHEN MATCHED THEN UPDATE SET
+                ingested_at = source.ingested_at,
+                activity_level = source.activity_level,
+                raw_payload = source.raw_payload
+            WHEN NOT MATCHED THEN INSERT (
+                run_id, snapshot_date, ingested_at, state, activity_level, raw_payload
+            ) VALUES (
+                source.run_id, source.snapshot_date, source.ingested_at,
+                source.state, source.activity_level, source.raw_payload
+            )
+        """)
+        row_count_out = len(records)
+
+        cursor.execute("DROP TABLE IF EXISTS RAW.FLU_SURVEILLANCE_STAGING")
+
+    except Exception as e:
+        status = "failure"
+        error_message = str(e)
+        logger.error(
+            "Load failed",
+            extra={"run_id": run_id, "stage": "load", "status": status, "error_message": error_message},
+        )
+        raise
+
+    finally:
+        duration_ms = int((time.time() - start_time) * 1000)
+        _write_pipeline_log(
+            conn=conn, run_id=run_id, pipeline_name="flu_surveillance_pipeline", stage="load",
+            status=status, row_count_in=len(records), row_count_out=row_count_out,
+            duration_ms=duration_ms, error_message=error_message,
+        )
+        cursor.close()
+        conn.close()
+
+    logger.info(
+        "Load finished",
+        extra={"run_id": run_id, "stage": "load", "status": status, "row_count_in": len(records), "row_count_out": row_count_out, "duration_ms": duration_ms},
+    )
+    return {"row_count_in": len(records), "row_count_out": row_count_out, "status": status}

@@ -25,16 +25,13 @@ CREATE TABLE IF NOT EXISTS RAW.COVID_DEATHS_RAW (
 
 CREATE TABLE IF NOT EXISTS RAW.FLU_SURVEILLANCE_RAW (
     run_id            STRING NOT NULL,
-    snapshot_date     DATE NOT NULL,
+    snapshot_date     DATE NOT NULL,           
     ingested_at       TIMESTAMP_NTZ NOT NULL,
-    state             STRING,
-    fips_code         STRING,
-    ili_activity_level STRING,                 
-    percent_ili       FLOAT,
+    state             STRING,                 
+    activity_level    STRING,                  
     raw_payload       VARIANT,
     PRIMARY KEY (run_id, snapshot_date, state)
 );
-
 
 CREATE TABLE IF NOT EXISTS OBSERVABILITY.PIPELINE_LOGS (
     log_id            STRING DEFAULT UUID_STRING(),
