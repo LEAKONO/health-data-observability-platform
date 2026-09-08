@@ -26,22 +26,40 @@ def get_last_snapshot_date(conn) -> str | None:
 
 
 def fetch_new_covid_data(last_snapshot_date: str | None) -> list[dict]:
-    params = {
-        "$order": "end_week ASC",
-        "$limit": 5000,
-    }
-    if last_snapshot_date:
-        params["$where"] = f"end_week > '{last_snapshot_date}'"
+    all_records = []
+    offset = 0
+    page_size = 5000
 
-    response = requests.get(CDC_API_URL, params=params, timeout=30)
-    response.raise_for_status()
-    return response.json()
+    while True:
+        params = {
+            "$order": "week_ending_date ASC",
+            "$limit": page_size,
+            "$offset": offset,
+        }
+        if last_snapshot_date:
+            params["$where"] = f"week_ending_date > '{last_snapshot_date}'"
+
+        response = requests.get(CDC_API_URL, params=params, timeout=30)
+        response.raise_for_status()
+        page = response.json()
+
+        if not page:
+            break  # no more records, we've reached the end
+
+        all_records.extend(page)
+
+        if len(page) < page_size:
+            break  # last page was partial, so we're done
+
+        offset += page_size
+
+    return all_records
 
 
 def transform_record(record: dict, run_id: str) -> dict:
     return {
         "run_id": run_id,
-        "snapshot_date": record.get("end_week", "")[:10],
+        "snapshot_date": record.get("week_ending_date", "")[:10],
         "ingested_at": datetime.now(timezone.utc).isoformat(),
         "state": record.get("state"),
         "covid_19_deaths": int(record["covid_19_deaths"]) if record.get("covid_19_deaths") else None,
@@ -51,7 +69,6 @@ def transform_record(record: dict, run_id: str) -> dict:
         "influenza_deaths": int(record["influenza_deaths"]) if record.get("influenza_deaths") else None,
         "raw_payload": record,
     }
-
 
 def run_extraction() -> list[dict]:
     run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"

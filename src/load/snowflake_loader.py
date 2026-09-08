@@ -1,4 +1,4 @@
-
+import json
 import time
 from datetime import datetime, timezone
 
@@ -24,48 +24,75 @@ def load_covid_deaths(records: list[dict], run_id: str) -> dict:
     error_message = None
 
     try:
-        for record in records:
-            merge_sql = """
-                MERGE INTO RAW.COVID_DEATHS_RAW AS target
-                USING (SELECT
-                    %(run_id)s AS run_id,
-                    %(snapshot_date)s AS snapshot_date,
-                    %(ingested_at)s AS ingested_at,
-                    %(state)s AS state,
-                    %(covid_19_deaths)s AS covid_19_deaths,
-                    %(total_deaths)s AS total_deaths,
-                    %(pneumonia_deaths)s AS pneumonia_deaths,
-                    %(pneumonia_and_covid_19_deaths)s AS pneumonia_and_covid_19_deaths,
-                    %(influenza_deaths)s AS influenza_deaths,
-                    PARSE_JSON(%(raw_payload)s) AS raw_payload
-                ) AS source
-                ON target.run_id = source.run_id
-                   AND target.snapshot_date = source.snapshot_date
-                   AND target.state = source.state
-                WHEN MATCHED THEN UPDATE SET
-                    ingested_at = source.ingested_at,
-                    covid_19_deaths = source.covid_19_deaths,
-                    total_deaths = source.total_deaths,
-                    pneumonia_deaths = source.pneumonia_deaths,
-                    pneumonia_and_covid_19_deaths = source.pneumonia_and_covid_19_deaths,
-                    influenza_deaths = source.influenza_deaths,
-                    raw_payload = source.raw_payload
-                WHEN NOT MATCHED THEN INSERT (
+        cursor.execute("""
+            CREATE TEMPORARY TABLE IF NOT EXISTS RAW.COVID_DEATHS_STAGING (
+                run_id            STRING,
+                snapshot_date     DATE,
+                ingested_at       TIMESTAMP_NTZ,
+                state             STRING,
+                covid_19_deaths   INTEGER,
+                total_deaths      INTEGER,
+                pneumonia_deaths  INTEGER,
+                pneumonia_and_covid_19_deaths INTEGER,
+                influenza_deaths  INTEGER,
+                raw_payload_text  STRING
+            )
+        """)
+
+        insert_rows = [
+            (
+                r["run_id"], r["snapshot_date"], r["ingested_at"], r["state"],
+                r["covid_19_deaths"], r["total_deaths"], r["pneumonia_deaths"],
+                r["pneumonia_and_covid_19_deaths"], r["influenza_deaths"],
+                json.dumps(r["raw_payload"]),
+            )
+            for r in records
+        ]
+        cursor.executemany(
+            """
+            INSERT INTO RAW.COVID_DEATHS_STAGING
+            (run_id, snapshot_date, ingested_at, state, covid_19_deaths,
+             total_deaths, pneumonia_deaths, pneumonia_and_covid_19_deaths,
+             influenza_deaths, raw_payload_text)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            insert_rows,
+        )
+
+        cursor.execute("""
+            MERGE INTO RAW.COVID_DEATHS_RAW AS target
+            USING (
+                SELECT
                     run_id, snapshot_date, ingested_at, state,
                     covid_19_deaths, total_deaths, pneumonia_deaths,
-                    pneumonia_and_covid_19_deaths, influenza_deaths, raw_payload
-                ) VALUES (
-                    source.run_id, source.snapshot_date, source.ingested_at, source.state,
-                    source.covid_19_deaths, source.total_deaths, source.pneumonia_deaths,
-                    source.pneumonia_and_covid_19_deaths, source.influenza_deaths, source.raw_payload
-                )
-            """
-            import json
-            cursor.execute(
-                merge_sql,
-                {**record, "raw_payload": json.dumps(record["raw_payload"])},
+                    pneumonia_and_covid_19_deaths, influenza_deaths,
+                    PARSE_JSON(raw_payload_text) AS raw_payload
+                FROM RAW.COVID_DEATHS_STAGING
+            ) AS source
+            ON target.run_id = source.run_id
+               AND target.snapshot_date = source.snapshot_date
+               AND target.state = source.state
+            WHEN MATCHED THEN UPDATE SET
+                ingested_at = source.ingested_at,
+                covid_19_deaths = source.covid_19_deaths,
+                total_deaths = source.total_deaths,
+                pneumonia_deaths = source.pneumonia_deaths,
+                pneumonia_and_covid_19_deaths = source.pneumonia_and_covid_19_deaths,
+                influenza_deaths = source.influenza_deaths,
+                raw_payload = source.raw_payload
+            WHEN NOT MATCHED THEN INSERT (
+                run_id, snapshot_date, ingested_at, state, covid_19_deaths,
+                total_deaths, pneumonia_deaths, pneumonia_and_covid_19_deaths,
+                influenza_deaths, raw_payload
+            ) VALUES (
+                source.run_id, source.snapshot_date, source.ingested_at, source.state,
+                source.covid_19_deaths, source.total_deaths, source.pneumonia_deaths,
+                source.pneumonia_and_covid_19_deaths, source.influenza_deaths, source.raw_payload
             )
-            row_count_out += 1
+        """)
+        row_count_out = len(records)
+
+        cursor.execute("DROP TABLE IF EXISTS RAW.COVID_DEATHS_STAGING")
 
     except Exception as e:
         status = "failure"
