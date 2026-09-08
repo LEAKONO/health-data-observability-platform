@@ -1,0 +1,46 @@
+{
+  "expectation_suite_name": "covid_deaths_suite",
+  "expectations": [
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "STATE" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "SNAPSHOT_DATE" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "COVID_19_DEATHS",
+        "min_value": 0,
+        "max_value": null,
+        "mostly": 1.0
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "TOTAL_DEATHS",
+        "min_value": 0,
+        "max_value": null,
+        "mostly": 1.0
+      }
+    },
+    {
+      "expectation_type": "expect_column_pair_values_A_to_be_greater_than_B",
+      "kwargs": {
+        "column_A": "TOTAL_DEATHS",
+        "column_B": "COVID_19_DEATHS",
+        "or_equal": true,
+        "ignore_row_if": "either_value_is_missing"
+      }
+    },
+    {
+      "expectation_type": "expect_compound_columns_to_be_unique",
+      "kwargs": {
+        "column_list": ["RUN_ID", "SNAPSHOT_DATE", "STATE"]
+      }
+    }
+  ]
+}
