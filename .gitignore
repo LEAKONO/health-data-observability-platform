@@ -22,4 +22,4 @@ airflow.cfg
 logs/
 
 # OS
-.DS_Store
+.DS_Storegx/
