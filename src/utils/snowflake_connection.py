@@ -1,12 +1,3 @@
-"""
-src/utils/snowflake_connection.py
-
-Provides a single, reusable way to connect to Snowflake.
-Every other module (loader, dbt, tests) uses this instead of
-writing its own connection logic — one place to fix if connection
-details ever change.
-"""
-
 import os
 import snowflake.connector
 from dotenv import load_dotenv
@@ -15,13 +6,7 @@ load_dotenv()  # reads variables from .env into the environment
 
 
 def get_snowflake_connection():
-    """
-    Opens and returns a Snowflake connection using credentials
-    from environment variables (never hardcoded).
-
-    Raises a clear error immediately if required config is missing,
-    instead of failing later with a confusing connection error.
-    """
+   
     required_vars = [
         "SNOWFLAKE_ACCOUNT",
         "SNOWFLAKE_USER",
