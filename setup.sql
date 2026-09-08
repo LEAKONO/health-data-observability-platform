@@ -1,9 +1,4 @@
--- ============================================================
--- setup.sql
--- Snowflake schema setup for the Health Data Observability Platform
--- ============================================================
 
--- Database and schemas
 CREATE DATABASE IF NOT EXISTS HEALTH_OBSERVABILITY;
 
 USE DATABASE HEALTH_OBSERVABILITY;
