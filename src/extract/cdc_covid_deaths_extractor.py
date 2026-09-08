@@ -44,12 +44,12 @@ def fetch_new_covid_data(last_snapshot_date: str | None) -> list[dict]:
         page = response.json()
 
         if not page:
-            break  # no more records, we've reached the end
+            break 
 
         all_records.extend(page)
 
         if len(page) < page_size:
-            break  # last page was partial, so we're done
+            break  
 
         offset += page_size
 
