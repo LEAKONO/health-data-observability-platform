@@ -1,6 +1,5 @@
 import json
 import time
-from datetime import datetime, timezone
 
 from src.utils.snowflake_connection import get_snowflake_connection
 from src.observability.logger_config import get_logger
