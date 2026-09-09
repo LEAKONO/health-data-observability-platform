@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Lint with ruff
+        run: ruff check .
+      - name: Run unit tests
+        run: pytest tests/ -v
+
+  great-expectations-suite-validation:
+    runs-on: ubuntu-latest
+    needs: lint-and-unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate GE suite JSON is well-formed
+        run: |
+          python3 -m json.tool great_expectations/expectations/covid_deaths_suite.json > /dev/null
+          python3 -m json.tool great_expectations/expectations/flu_surveillance_suite.json > /dev/null
+          echo "Both expectation suites are valid JSON"
+
+  airflow-dag-validation:
+    runs-on: ubuntu-latest
+    needs: lint-and-unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Validate DAG imports with no errors
+        run: |
+          python3 -c "
+          from airflow.models import DagBag
+          db = DagBag(dag_folder='dags/', include_examples=False)
+          assert not db.import_errors, db.import_errors
+          assert 'health_surveillance_pipeline' in db.dags
+          print('DAG imported successfully:', list(db.dags.keys()))
+          "
+
+  dbt-build-and-test:
+    runs-on: ubuntu-latest
+    needs: lint-and-unit-tests
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+      SNOWFLAKE_SCHEMA: STAGING
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dbt
+        run: pip install dbt-snowflake==1.8.3
+      - name: Set up dbt profile
+        run: |
+          mkdir -p ~/.dbt
+          cp dbt_project/profiles.yml.example ~/.dbt/profiles.yml
+      - name: dbt deps
+        run: dbt deps
+        working-directory: ./dbt_project
+      - name: dbt build (run + test)
+        run: dbt build
+        working-directory: ./dbt_project
