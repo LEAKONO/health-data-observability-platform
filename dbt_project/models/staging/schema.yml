@@ -1,0 +1,40 @@
+version: 2
+
+sources:
+  - name: raw
+    database: HEALTH_OBSERVABILITY
+    schema: RAW
+    tables:
+      - name: covid_deaths_raw
+      - name: flu_surveillance_raw
+
+models:
+  - name: stg_covid_deaths
+    description: "Lightly cleaned COVID death counts, one row per (run_id, snapshot_date, state)"
+    columns:
+      - name: run_id
+        data_tests:
+          - not_null
+      - name: snapshot_date
+        data_tests:
+          - not_null
+      - name: state
+        data_tests:
+          - not_null
+
+  - name: stg_flu_surveillance
+    description: "Lightly cleaned flu ARI activity levels, one row per (run_id, snapshot_date, state)"
+    columns:
+      - name: run_id
+        data_tests:
+          - not_null
+      - name: snapshot_date
+        data_tests:
+          - not_null
+      - name: state
+        data_tests:
+          - not_null
+      - name: activity_level
+        data_tests:
+          - accepted_values:
+              values: ['Very Low', 'Low', 'Moderate', 'High', 'Very High', 'Data Unavailable']

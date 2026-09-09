@@ -1,0 +1,13 @@
+health_observability:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: ACCOUNTADMIN
+      database: HEALTH_OBSERVABILITY
+      warehouse: HEALTH_OBS_WH
+      schema: STAGING
+      threads: 4
