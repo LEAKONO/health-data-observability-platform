@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: dim_state
+    description: "One row per US state/territory reporting health surveillance data"
+    columns:
+      - name: state_key
+        data_tests:
+          - unique
+          - not_null
+
+  - name: fct_cases_as_reported
+    description: "Point-in-time COVID death data -- every ingested version, nothing overwritten"
+    columns:
+      - name: run_id
+        data_tests:
+          - not_null
+
+  - name: fct_cases_latest
+    description: "Current best-known COVID death data -- one row per (snapshot_date, state)"
+    columns:
+      - name: snapshot_date
+        data_tests:
+          - not_null
+
+  - name: fct_revision_history
+    description: "Rows where CDC revised a previously-reported week's COVID death count"
