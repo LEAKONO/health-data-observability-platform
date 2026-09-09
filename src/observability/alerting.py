@@ -54,7 +54,6 @@ def send_failure_alert(run_id: str, pipeline_name: str, stage: str, error_messag
 
 
 if __name__ == "__main__":
-    # Manual test: python -m src.observability.alerting
     from dotenv import load_dotenv
     load_dotenv()
 
