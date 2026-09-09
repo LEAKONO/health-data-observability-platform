@@ -1,0 +1,25 @@
+version: 2
+
+sources:
+  - name: observability
+    database: HEALTH_OBSERVABILITY
+    schema: OBSERVABILITY
+    tables:
+      - name: pipeline_logs
+      - name: anomaly_flags
+
+models:
+  - name: pipeline_run_summary
+    description: "Aggregated pipeline health metrics per pipeline and stage -- success rate, average duration, row counts"
+    columns:
+      - name: pipeline_name
+        data_tests:
+          - not_null
+
+  - name: data_freshness_by_state
+    description: "How recently each state's COVID data was last updated, flags states that haven't reported in over 14 days"
+    columns:
+      - name: state
+        data_tests:
+          - not_null
+          - unique
