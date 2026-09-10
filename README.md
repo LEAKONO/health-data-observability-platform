@@ -1,6 +1,6 @@
 # Health Data Observability Platform
 
-A data pipeline for CDC public health surveillance data (COVID-19 deaths and flu activity levels), built with an emphasis on **trust, not just movement**. Most portfolio ETL projects stop at "get data from API into warehouse." This one adds the layer that actually makes a pipeline production-worthy: validation that stops bad data before it's trusted, anomaly detection that flags unusual-but-valid data, structured logging that makes every run auditable, and CI/CD that catches regressions before they ship.
+A data pipeline for CDC public health surveillance data (COVID-19 deaths and flu activity levels), built with an emphasis on **trust, not just movement**. It doesn't just move data from an API into a warehouse  it validates every load before anything downstream trusts it, flags statistically unusual data without failing the pipeline on it, logs every run in a structured, queryable format, and runs a CI/CD pipeline that catches regressions before they ship.
 
 ![CI](https://github.com/LEAKONO/health-data-observability-platform/actions/workflows/ci.yml/badge.svg)
 
@@ -50,19 +50,10 @@ Every stage logs to `OBSERVABILITY.PIPELINE_LOGS`. Every run's outcome is querya
 
 ## Key design decisions
 
-**Immutable raw layer, not overwrite-in-place.** `RAW.COVID_DEATHS_RAW` is keyed on `(run_id, snapshot_date, state)`, not just `(snapshot_date, state)`. When CDC revises a previously-published week, the old version isn't lost — a new row is added. This is what makes `fct_cases_as_reported` (what we knew as of any point in time) and `fct_cases_latest` (current best-known values) both possible from the same source of truth.
-
-**Idempotent loads via `MERGE`, not `INSERT`.** The loader matches on the same composite key as the table's primary key. Re-running the same batch twice never duplicates data — verified directly against live data.
-
-**Incremental extraction, not full re-pull.** Before calling the CDC API, the extractor checks Snowflake for the most recent `snapshot_date` already loaded, and only requests weeks newer than that. Verified live: a full historical backfill (16,200 rows, 6 years of data) followed by a same-day re-run correctly extracted zero new rows and made zero unnecessary database calls.
-
-**Validation (Great Expectations) is separate from anomaly detection, on purpose.** GE catches *invalid* data — negative counts, broken schema, duplicate keys — and is fail-closed: a failed suite should stop the pipeline. The anomaly detector catches *valid but unusual* data — a real spike in a state's death count — and only flags it for review, never fails the pipeline. Conflating these two would either make the pipeline too fragile (failing on real pandemic waves) or too silent (never catching genuine errors).
-
-## Findings — what the observability layer actually caught
-
-- **35% of early COVID records have no `covid_19_deaths` value.** Great Expectations' `total_deaths >= covid_19_deaths` check initially failed on the full historical load — not a bug, but a real reporting gap. Fixed by distinguishing "not yet reported" from "inconsistent."
-- **514 real anomalies detected** across 6 years of COVID death data, aligning with known pandemic history — e.g. California peaking at z=16.6 during the winter 2020–21 surge.
-- **`pipeline_run_summary` honestly reflects real debugging history** — the COVID load stage shows 3 successes and 2 failures out of 5 runs, matching real bugs found and fixed during development.
+- **Immutable raw layer.** `RAW.COVID_DEATHS_RAW` is keyed on `(run_id, snapshot_date, state)`  not overwritten when CDC revises a week. This one design choice is what makes both "what we know now" and "what we knew back then" queryable from the same table.
+- **Idempotent by design.** Loads use `MERGE`, not `INSERT`. Re-running the same batch twice never duplicates data — verified against live data, not just assumed.
+- **Incremental, not brute-force.** Every extraction checks Snowflake first and only pulls weeks that aren't already there. A full 6-year backfill (16,200 rows) followed by a same-day re-run correctly pulled zero new rows.
+- **Two kinds of "wrong," two separate checks.** Great Expectations catches *invalid* data (negative counts, broken schema) and stops the pipeline. Anomaly detection catches *valid but unusual* data (a real spike) and only flags it. Merging these two would make the pipeline either too fragile or too silent.
 
 ## Tech stack
 
@@ -131,7 +122,7 @@ health-data-observability-platform/
 
 ## About
 
-Built by **Emmanuel Leakono** as a hands-on exploration of what separates a working pipeline from a trustworthy one — every design decision, bug, and fix in this repo was found and solved against real, live infrastructure, not simulated for the sake of a demo.
+Built by **Emmanuel Leakono** as a hands-on exploration of what separates a working pipeline from a trustworthy one  every design decision, bug, and fix in this repo was found and solved against real, live infrastructure, not simulated for the sake of a demo.
 
 - GitHub: [github.com/LEAKONO](https://github.com/LEAKONO)
 - Feedback and PRs welcome — if you spot something that could be more robust, open an issue.
