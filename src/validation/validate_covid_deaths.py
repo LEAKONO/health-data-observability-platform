@@ -18,8 +18,6 @@ SUITE_PATH = "great_expectations/expectations/covid_deaths_suite.json"
 
 
 def load_data_for_validation(run_id: str) -> pd.DataFrame:
-    """Pulls only the rows from this specific run -- validating what
-    was just loaded, not the entire historical table every time."""
     conn = get_snowflake_connection()
     try:
         query = f"""
@@ -33,14 +31,6 @@ def load_data_for_validation(run_id: str) -> pd.DataFrame:
 
 
 def run_validation(run_id: str) -> dict:
-    """
-    Validates the given run's data against covid_deaths_suite.
-    Returns a result dict with a clear pass/fail signal the caller
-    (e.g. the Airflow DAG) can use to decide whether to proceed.
-    On failure, includes enough detail (which expectation, how many
-    rows, example values) to actually investigate -- not just a
-    pass/fail flag.
-    """
     df = load_data_for_validation(run_id)
 
     if df.empty:

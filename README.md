@@ -10,31 +10,40 @@ Every week, the CDC publishes state-level COVID death counts and flu activity le
 
 ## Architecture
 
-```
-CDC Socrata API (COVID deaths, flu ARI activity)
-        │
-        ▼
-   Extract (incremental — only pulls weeks not already in Snowflake)
-        │
-        ▼
-   Load (staged bulk load + MERGE — idempotent, safe to re-run)
-        │
-        ├──► RAW layer (Snowflake) — immutable, every ingested version kept
-        │
-        ▼
-   Validate (Great Expectations — fail-closed, stops bad data here)
-        │
-        ▼
-   Anomaly Detection (z-score vs. each state's own history — flags, doesn't fail)
-        │
-        ▼
-   Transform (dbt) — staging → marts (latest + as-reported + revision history)
-        │
-        ▼
-   Observability views — pipeline_run_summary, data_freshness_by_state
-        │
-        ▼
-   Orchestration (Airflow) — weekly schedule, retries, Slack alerting on failure
+```mermaid
+flowchart TD
+    A[CDC Socrata API<br/>COVID deaths + flu ARI<br/>weekly]
+    A --> B[Extract<br/>incremental]
+    B --> C[Load<br/>staged bulk + MERGE]
+    C --> D[(RAW<br/>immutable history)]
+    D --> E{Validate<br/>Great Expectations}
+    E -->|pass| F[Anomaly detection<br/>z-score per state]
+    F --> G[dbt<br/>staging to marts]
+    G --> H[Observability views<br/>pure SQL]
+
+    subgraph Orchestration
+        I[Airflow<br/>weekly + retries]
+    end
+    subgraph "Quality gate"
+        J[GitHub Actions<br/>lint, test, dbt build]
+    end
+
+    I -.triggers.-> B
+    J -.validates.-> G
+
+    classDef source fill:#E6F1FB,stroke:#185FA5,stroke-width:1.5px,color:#0C447C
+    classDef process fill:#EEEDFE,stroke:#534AB7,stroke-width:1.5px,color:#3C3489
+    classDef storage fill:#F1EFE8,stroke:#5F5E5A,stroke-width:1.5px,color:#2C2C2A
+    classDef gate fill:#FAEEDA,stroke:#854F0B,stroke-width:1.5px,color:#412402
+    classDef observe fill:#E1F5EE,stroke:#0F6E56,stroke-width:1.5px,color:#04342C
+    classDef infra fill:#FBEAF0,stroke:#993556,stroke-width:1.5px,color:#4B1528
+
+    class A source
+    class B,C,F,G process
+    class D storage
+    class E gate
+    class H observe
+    class I,J infra
 ```
 
 Every stage logs to `OBSERVABILITY.PIPELINE_LOGS`. Every run's outcome is queryable with plain SQL — no BI tool required.
@@ -43,13 +52,17 @@ Every stage logs to `OBSERVABILITY.PIPELINE_LOGS`. Every run's outcome is querya
 
 **Immutable raw layer, not overwrite-in-place.** `RAW.COVID_DEATHS_RAW` is keyed on `(run_id, snapshot_date, state)`, not just `(snapshot_date, state)`. When CDC revises a previously-published week, the old version isn't lost — a new row is added. This is what makes `fct_cases_as_reported` (what we knew as of any point in time) and `fct_cases_latest` (current best-known values) both possible from the same source of truth.
 
-**Idempotent loads via `MERGE`, not `INSERT`.** The loader matches on the same composite key as the table's primary key. Re-running the same batch twice never duplicates data — verified directly against live data (see Findings below).
+**Idempotent loads via `MERGE`, not `INSERT`.** The loader matches on the same composite key as the table's primary key. Re-running the same batch twice never duplicates data — verified directly against live data.
 
 **Incremental extraction, not full re-pull.** Before calling the CDC API, the extractor checks Snowflake for the most recent `snapshot_date` already loaded, and only requests weeks newer than that. Verified live: a full historical backfill (16,200 rows, 6 years of data) followed by a same-day re-run correctly extracted zero new rows and made zero unnecessary database calls.
 
 **Validation (Great Expectations) is separate from anomaly detection, on purpose.** GE catches *invalid* data — negative counts, broken schema, duplicate keys — and is fail-closed: a failed suite should stop the pipeline. The anomaly detector catches *valid but unusual* data — a real spike in a state's death count — and only flags it for review, never fails the pipeline. Conflating these two would either make the pipeline too fragile (failing on real pandemic waves) or too silent (never catching genuine errors).
 
+## Findings — what the observability layer actually caught
 
+- **35% of early COVID records have no `covid_19_deaths` value.** Great Expectations' `total_deaths >= covid_19_deaths` check initially failed on the full historical load — not a bug, but a real reporting gap. Fixed by distinguishing "not yet reported" from "inconsistent."
+- **514 real anomalies detected** across 6 years of COVID death data, aligning with known pandemic history — e.g. California peaking at z=16.6 during the winter 2020–21 surge.
+- **`pipeline_run_summary` honestly reflects real debugging history** — the COVID load stage shows 3 successes and 2 failures out of 5 runs, matching real bugs found and fixed during development.
 
 ## Tech stack
 
@@ -88,13 +101,13 @@ health-data-observability-platform/
 1. **Snowflake**: create a free trial account, then run `setup.sql` in a Snowsight worksheet to create the database, schemas, and tables.
 2. **Environment**: copy `.env.example` to `.env` and fill in your Snowflake credentials and (optionally) a Slack webhook URL.
 3. **Python**:
-   ```bash
+```bash
    python3 -m venv venv
    source venv/bin/activate
    pip install -r requirements.txt
-   ```
+```
 4. **Run a manual pipeline pass**:
-   ```bash
+```bash
    python3 -c "
    from dotenv import load_dotenv
    load_dotenv()
@@ -104,12 +117,23 @@ health-data-observability-platform/
    if records:
        print(load_covid_deaths(records, run_id=records[0]['run_id']))
    "
-   ```
+```
 5. **dbt**:
-   ```bash
+```bash
    cd dbt_project
    cp profiles.yml.example ~/.dbt/profiles.yml
    dbt deps
    dbt build
-   ```
+```
 6. **Tests**: `pytest tests/ -v`
+
+
+
+## About
+
+Built by **Emmanuel Leakono** as a hands-on exploration of what separates a working pipeline from a trustworthy one — every design decision, bug, and fix in this repo was found and solved against real, live infrastructure, not simulated for the sake of a demo.
+
+- GitHub: [github.com/LEAKONO](https://github.com/LEAKONO)
+- Feedback and PRs welcome — if you spot something that could be more robust, open an issue.
+
+If this project was useful or interesting, a ⭐ on the repo is appreciated.

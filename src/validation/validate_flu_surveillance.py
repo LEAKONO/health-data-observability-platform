@@ -1,10 +1,3 @@
-"""
-src/validation/validate_flu_surveillance.py
-
-Runs the flu_surveillance_suite Great Expectations checks against
-data in RAW.FLU_SURVEILLANCE_RAW. Same fail-closed pattern as
-validate_covid_deaths.py, adapted for this table's categorical schema.
-"""
 
 import json
 import sys
